@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Healthcare Management System</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script>
+window.elementSdk = {
+  config: {},
+  init: function(options) {
+    this.config = { ...options.defaultConfig };
+    this.onConfigChange = options.onConfigChange;
+    this.capabilities = options.mapToCapabilities ? options.mapToCapabilities(this.config) : {};
+    this.editPanelValues = options.mapToEditPanelValues ? options.mapToEditPanelValues(this.config) : new Map();
+    if (this.onConfigChange) this.onConfigChange(this.config);
+  },
+  setConfig: function(newConfig) {
+    Object.assign(this.config, newConfig);
+    if (this.onConfigChange) this.onConfigChange(this.config);
+  }
+};
+</script>
+  <script>
+window.dataSdk = {
+  data: [],
+  onDataChanged: null,
+  init: async function(options) {
+    this.onDataChanged = options.onDataChanged;
+    try {
+      const stored = localStorage.getItem('healthcare_data');
+      this.data = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      this.data = [];
+    }
+    if (this.onDataChanged) this.onDataChanged(this.data);
+    return { isOk: true };
+  },
+  create: async function(record) {
+    record.__backendId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    this.data.push(record);
+    this.save();
+    if (this.onDataChanged) this.onDataChanged(this.data);
+    return { isOk: true };
+  },
+  update: async function(record) {
+    const index = this.data.findIndex(r => r.__backendId === record.__backendId);
+    if (index !== -1) {
+      this.data[index] = record;
+      this.save();
+      if (this.onDataChanged) this.onDataChanged(this.data);
+      return { isOk: true };
+    }
+    return { isOk: false };
+  },
+  delete: async function(record) {
+    const index = this.data.findIndex(r => r.__backendId === record.__backendId);
+    if (index !== -1) {
+      this.data.splice(index, 1);
+      this.save();
+      if (this.onDataChanged) this.onDataChanged(this.data);
+      return { isOk: true };
+    }
+    return { isOk: false };
+  },
+  save: function() {
+    try {
+      localStorage.setItem('healthcare_data', JSON.stringify(this.data));
+    } catch (e) {
+      console.error('Failed to save data', e);
+    }
+  }
+};
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+  <style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: 'DM Sans', sans-serif; }
+
+  .fade-in { animation: fadeIn 0.4s ease forwards; opacity: 0; }
+  @keyframes fadeIn { to { opacity: 1; } }
+  .slide-up { animation: slideUp 0.5s ease forwards; opacity: 0; transform: translateY(16px); }
+  @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+  .tab-active { border-bottom: 3px solid; font-weight: 600; }
+  .toast-show { animation: toastIn 0.3s ease forwards; }
+  .toast-hide { animation: toastOut 0.3s ease forwards; }
+  @keyframes toastIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-20px); } }
+
+  .modal-backdrop { background: rgba(0,0,0,0.5); }
+  .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+
+  input, select, textarea {
+    font-family: 'DM Sans', sans-serif;
+  }
+  .status-scheduled { background: #dbeafe; color: #1e40af; }
+  .status-completed { background: #dcfce7; color: #166534; }
+  .status-cancelled { background: #fee2e2; color: #991b1b; }
+  .status-pending { background: #fef3c7; color: #92400e; }
+  .status-paid { background: #dcfce7; color: #166534; }
+  .status-unpaid { background: #fee2e2; color: #991b1b; }
+
+  .scroll-area { overflow-y: auto; }
+  .scroll-area::-webkit-scrollbar { width: 6px; }
+  .scroll-area::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+</style>
+  <style>body { box-sizing: border-box; }</style>
+ </head>
+ <body class="h-full">
+  <div id="app" class="h-full w-full flex flex-col overflow-auto" style="background: #f0f4f8;"><!-- Toast -->
+   <div id="toast" class="fixed top-4 right-4 z-50 hidden px-5 py-3 rounded-lg shadow-lg text-white text-sm font-medium" style="background: #0f766e;"></div><!-- Header -->
+   <header id="header" class="w-full px-6 py-4 shadow-sm" style="background: #0f766e;">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+     <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(255,255,255,0.2);"><i data-lucide="heart-pulse" style="width:22px;height:22px;color:#fff;"></i>
+      </div>
+      <div>
+       <h1 id="main-title" class="text-lg font-bold text-white" style="font-family: 'Playfair Display', serif;">Healthcare Management System</h1>
+       <p id="main-subtitle" class="text-xs" style="color: rgba(255,255,255,0.75);">Appointments &amp; Records</p>
+      </div>
+     </div>
+     <div class="flex items-center gap-2 text-white text-xs" style="color: rgba(255,255,255,0.8);"><i data-lucide="shield-check" style="width:14px;height:14px;"></i> <span>Demo System — Sample Data Only</span>
+     </div>
+    </div>
+   </header><!-- Navigation Tabs -->
+   <nav class="w-full border-b" style="background: #ffffff;">
+    <div class="max-w-7xl mx-auto flex"><button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-active px-6 py-3 text-sm flex items-center gap-2 border-b-3 transition-colors" style="color: #0f766e; border-color: #0f766e;"> <i data-lucide="layout-dashboard" style="width:16px;height:16px;"></i> Dashboard </button> <button onclick="switchTab('patients')" id="tab-patients" class="px-6 py-3 text-sm flex items-center gap-2 transition-colors" style="color: #64748b;"> <i data-lucide="users" style="width:16px;height:16px;"></i> Patients </button> <button onclick="switchTab('appointments')" id="tab-appointments" class="px-6 py-3 text-sm flex items-center gap-2 transition-colors" style="color: #64748b;"> <i data-lucide="calendar" style="width:16px;height:16px;"></i> Appointments </button> <button onclick="switchTab('billing')" id="tab-billing" class="px-6 py-3 text-sm flex items-center gap-2 transition-colors" style="color: #64748b;"> <i data-lucide="receipt" style="width:16px;height:16px;"></i> Billing </button>
+    </div>
+   </nav><!-- Main Content -->
+   <main class="flex-1 w-full overflow-auto">
+    <div class="max-w-7xl mx-auto p-6"><!-- Dashboard -->
+     <div id="view-dashboard" class="fade-in">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+       <div class="rounded-xl p-5 card-hover" style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <div class="flex items-center justify-between mb-2"><span class="text-xs font-medium" style="color: #64748b;">Total Patients</span>
+         <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: #f0fdfa;"><i data-lucide="users" style="width:16px;height:16px;color:#0f766e;"></i>
+         </div>
+        </div>
+        <p id="stat-patients" class="text-2xl font-bold" style="color: #0f172a;">0</p>
+       </div>
+       <div class="rounded-xl p-5 card-hover" style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <div class="flex items-center justify-between mb-2"><span class="text-xs font-medium" style="color: #64748b;">Appointments</span>
+         <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: #eff6ff;"><i data-lucide="calendar" style="width:16px;height:16px;color:#2563eb;"></i>
+         </div>
+        </div>
+        <p id="stat-appointments" class="text-2xl font-bold" style="color: #0f172a;">0</p>
+       </div>
+       <div class="rounded-xl p-5 card-hover" style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <div class="flex items-center justify-between mb-2"><span class="text-xs font-medium" style="color: #64748b;">Completed</span>
+         <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: #f0fdf4;"><i data-lucide="check-circle" style="width:16px;height:16px;color:#16a34a;"></i>
+         </div>
+        </div>
+        <p id="stat-completed" class="text-2xl font-bold" style="color: #0f172a;">0</p>
+       </div>
+       <div class="rounded-xl p-5 card-hover" style="background: #ffffff; border: 1px solid #e2e8f0;">
+        <div class="flex items-center justify-between mb-2"><span class="text-xs font-medium" style="color: #64748b;">Revenue</span>
+         <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: #fefce8;"><i data-lucide="dollar-sign" style="width:16px;height:16px;color:#ca8a04;"></i>
+         </div>
+        </div>
+        <p id="stat-revenue" class="text-2xl font-bold" style="color: #0f172a;">₱0</p>
+       </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+       <div class="rounded-xl p-5" style="background:#fff;border:1px solid #e2e8f0;">
+        <h3 class="font-semibold mb-4 flex items-center gap-2" style="color:#0f172a;"><i data-lucide="calendar-clock" style="width:18px;height:18px;color:#0f766e;"></i> Upcoming Appointments</h3>
+        <div id="upcoming-list" class="space-y-3 scroll-area" style="max-height: 280px;">
+         <p class="text-sm text-center py-8" style="color:#94a3b8;">No upcoming appointments</p>
+        </div>
+       </div>
+       <div class="rounded-xl p-5" style="background:#fff;border:1px solid #e2e8f0;">
+        <h3 class="font-semibold mb-4 flex items-center gap-2" style="color:#0f172a;"><i data-lucide="user-plus" style="width:18px;height:18px;color:#0f766e;"></i> Recent Patients</h3>
+        <div id="recent-patients" class="space-y-3 scroll-area" style="max-height: 280px;">
+         <p class="text-sm text-center py-8" style="color:#94a3b8;">No patients registered</p>
+        </div>
+       </div>
+      </div>
+     </div><!-- Patients View -->
+     <div id="view-patients" class="hidden fade-in">
+      <div class="flex items-center justify-between mb-5">
+       <div>
+        <h2 class="text-xl font-bold" style="color:#0f172a;">Patient Records</h2>
+        <p class="text-sm" style="color:#64748b;">Manage patient information</p>
+       </div><button onclick="openModal('patient')" class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-medium transition-colors hover:opacity-90" style="background:#0f766e;"> <i data-lucide="user-plus" style="width:16px;height:16px;"></i> Add Patient </button>
+      </div>
+      <div class="mb-4">
+    <div class="relative">
+        <i data-lucide="search" style="width:16px;height:16px;color:#94a3b8;position:absolute;left:12px;top:50%;transform:translateY(-50%);"></i>
+        <input type="text" id="patient-search" oninput="filterPatients()" placeholder="Search patients by name..." class="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-[#0f766e]" style="border-color:#e2e8f0;">
+    </div>
+       </div>
+      </div>
+      <div id="patients-table" class="rounded-xl overflow-hidden" style="background:#fff;border:1px solid #e2e8f0;">
+       <table class="w-full text-sm">
+        <thead>
+         <tr style="background:#f8fafc;">
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Name</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Age</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Gender</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Contact</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Actions</th>
+         </tr>
+        </thead>
+        <tbody id="patients-tbody">
+         <tr>
+          <td colspan="5" class="text-center py-12" style="color:#94a3b8;">No patients yet. Click "Add Patient" to get started.</td>
+         </tr>
+        </tbody>
+       </table>
+      </div>
+     </div><!-- Appointments View -->
+     <div id="view-appointments" class="hidden fade-in">
+      <div class="flex items-center justify-between mb-5">
+       <div>
+        <h2 class="text-xl font-bold" style="color:#0f172a;">Appointments</h2>
+        <p class="text-sm" style="color:#64748b;">Schedule and manage appointments</p>
+       </div><button onclick="openModal('appointment')" class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-medium transition-colors hover:opacity-90" style="background:#0f766e;"> <i data-lucide="calendar-plus" style="width:16px;height:16px;"></i> New Appointment </button>
+      </div>
+      <div class="flex gap-2 mb-4 flex-wrap"><button onclick="filterAppointments('all')" class="appt-filter px-3 py-1.5 rounded-full text-xs font-medium" style="background:#0f766e;color:#fff;" data-filter="all">All</button> <button onclick="filterAppointments('Scheduled')" class="appt-filter px-3 py-1.5 rounded-full text-xs font-medium" style="background:#e2e8f0;color:#64748b;" data-filter="Scheduled">Scheduled</button> <button onclick="filterAppointments('Completed')" class="appt-filter px-3 py-1.5 rounded-full text-xs font-medium" style="background:#e2e8f0;color:#64748b;" data-filter="Completed">Completed</button> <button onclick="filterAppointments('Cancelled')" class="appt-filter px-3 py-1.5 rounded-full text-xs font-medium" style="background:#e2e8f0;color:#64748b;" data-filter="Cancelled">Cancelled</button>
+      </div>
+      <div id="appointments-list" class="space-y-3">
+       <p class="text-sm text-center py-12" style="color:#94a3b8;">No appointments yet. Click "New Appointment" to schedule one.</p>
+      </div>
+     </div><!-- Billing View -->
+     <div id="view-billing" class="hidden fade-in">
+      <div class="flex items-center justify-between mb-5">
+       <div>
+        <h2 class="text-xl font-bold" style="color:#0f172a;">Billing</h2>
+        <p class="text-sm" style="color:#64748b;">Track payment transactions</p>
+       </div>
+      </div>
+      <div id="billing-table" class="rounded-xl overflow-hidden" style="background:#fff;border:1px solid #e2e8f0;">
+       <table class="w-full text-sm">
+        <thead>
+         <tr style="background:#f8fafc;">
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Patient</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Date</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Amount</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Status</th>
+          <th class="text-left px-5 py-3 font-semibold" style="color:#64748b;">Actions</th>
+         </tr>
+        </thead>
+        <tbody id="billing-tbody">
+         <tr>
+          <td colspan="5" class="text-center py-12" style="color:#94a3b8;">No billing records. Billing is created with appointments.</td>
+         </tr>
+        </tbody>
+       </table>
+      </div>
+     </div>
+    </div>
+   </main><!-- Footer -->
+   <footer class="w-full px-6 py-3 text-center text-xs" style="background:#e2e8f0;color:#64748b;"><span id="footer-text">© 2024 HealthCare System</span> · <span style="color:#94a3b8;">Demo — Sample Data Only</span>
+   </footer>
+  </div><!-- Modal Overlay -->
+  <div id="modal-overlay" class="fixed inset-0 z-40 hidden flex items-center justify-center modal-backdrop">
+   <div id="modal-content" class="rounded-2xl p-6 w-full max-w-lg mx-4 shadow-2xl slide-up scroll-area" style="background:#fff;max-height:90%;">
+    <div class="flex items-center justify-between mb-5">
+     <h3 id="modal-title" class="text-lg font-bold" style="color:#0f172a;">Add Patient</h3><button onclick="closeModal()" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><i data-lucide="x" style="width:18px;height:18px;color:#64748b;"></i></button>
+    </div>
+    <form id="modal-form" onsubmit="handleFormSubmit(event)">
+     <div id="modal-fields"></div>
+     <div class="flex gap-3 mt-6"><button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-lg text-sm font-medium border" style="border-color:#e2e8f0;color:#64748b;">Cancel</button> <button type="submit" id="modal-submit" class="flex-1 py-2.5 rounded-lg text-sm font-medium text-white" style="background:#0f766e;">Save</button>
+     </div>
+    </form>
+   </div>
+  </div><!-- Delete Confirmation -->
+  <div id="delete-overlay" class="fixed inset-0 z-50 hidden flex items-center justify-center modal-backdrop">
+   <div class="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl slide-up" style="background:#fff;">
+    <div class="text-center mb-4">
+     <div class="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style="background:#fee2e2;"><i data-lucide="trash-2" style="width:20px;height:20px;color:#dc2626;"></i>
+     </div>
+     <h3 class="font-bold" style="color:#0f172a;">Confirm Delete</h3>
+     <p id="delete-msg" class="text-sm mt-1" style="color:#64748b;">Are you sure you want to delete this record?</p>
+    </div>
+    <div class="flex gap-3"><button onclick="closeDelete()" class="flex-1 py-2.5 rounded-lg text-sm font-medium border" style="border-color:#e2e8f0;color:#64748b;">Cancel</button> <button onclick="confirmDelete()" id="delete-confirm-btn" class="flex-1 py-2.5 rounded-lg text-sm font-medium text-white" style="background:#dc2626;">Delete</button>
+    </div>
+   </div>
+  </div>
+  <script>
+// ===== STATE =====
+let allRecords = [];
+let currentTab = 'dashboard';
+let currentModalType = null;
+let editingRecord = null;
+let deletingRecord = null;
+let currentApptFilter = 'all';
+
+const defaultConfig = {
+  system_title: 'Healthcare Management System',
+  subtitle_text: 'Appointments & Records',
+  footer_text: '© 2024 HealthCare System',
+  background_color: '#f0f4f8',
+  surface_color: '#ffffff',
+  text_color: '#0f172a',
+  primary_action: '#0f766e',
+  secondary_action: '#64748b',
+  font_family: 'DM Sans',
+  font_size: 14
+};
+
+// ===== ELEMENT SDK =====
+window.elementSdk.init({
+  defaultConfig,
+  onConfigChange: async (config) => {
+    const c = key => config[key] || defaultConfig[key];
+    const font = c('font_family');
+    const baseSize = c('font_size');
+    const primary = c('primary_action');
+    const bg = c('background_color');
+    const surface = c('surface_color');
+    const text = c('text_color');
+    const secondary = c('secondary_action');
+
+    document.body.style.fontFamily = `${font}, DM Sans, sans-serif`;
+    document.getElementById('app').style.background = bg;
+
+    // Header
+    const header = document.getElementById('header');
+    header.style.background = primary;
+
+    // Title
+    document.getElementById('main-title').textContent = c('system_title');
+    document.getElementById('main-title').style.fontSize = `${baseSize * 1.3}px`;
+    document.getElementById('main-subtitle').textContent = c('subtitle_text');
+    document.getElementById('main-subtitle').style.fontSize = `${baseSize * 0.8}px`;
+    document.getElementById('footer-text').textContent = c('footer_text');
+
+    // Tabs
+    document.querySelectorAll('nav button').forEach(btn => {
+      if (btn.classList.contains('tab-active')) {
+        btn.style.color = primary;
+        btn.style.borderColor = primary;
+      } else {
+        btn.style.color = secondary;
+      }
+    });
+
+    // Cards, tables
+    document.querySelectorAll('.card-hover, #patients-table, #billing-table').forEach(el => {
+      el.style.background = surface;
+    });
+    document.querySelectorAll('#view-dashboard h3, #view-patients h2, #view-appointments h2, #view-billing h2').forEach(el => {
+      el.style.color = text;
+    });
+
+    // Buttons with primary
+    document.querySelectorAll(`button[style*="background:#0f766e"], button[style*="background: #0f766e"]`).forEach(btn => {
+      btn.style.background = primary;
+    });
+
+    // Stat numbers
+    document.querySelectorAll('[id^="stat-"]').forEach(el => {
+      el.style.color = text;
+      el.style.fontSize = `${baseSize * 1.7}px`;
+    });
+
+    // Font size on body text
+    document.querySelectorAll('p, span, td, th, input, select, textarea, button').forEach(el => {
+      if (!el.closest('header') && !el.id?.startsWith('stat-')) {
+        el.style.fontSize = `${baseSize}px`;
+      }
+    });
+  },
+  mapToCapabilities: (config) => {
+    const c = key => config[key] || defaultConfig[key];
+    const makeColor = (key) => ({
+      get: () => c(key),
+      set: (v) => { config[key] = v; window.elementSdk.setConfig({ [key]: v }); }
+    });
+    return {
+      recolorables: [
+        makeColor('background_color'),
+        makeColor('surface_color'),
+        makeColor('text_color'),
+        makeColor('primary_action'),
+        makeColor('secondary_action')
+      ],
+      borderables: [],
+      fontEditable: {
+        get: () => c('font_family'),
+        set: (v) => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); }
+      },
+      fontSizeable: {
+        get: () => c('font_size'),
+        set: (v) => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); }
+      }
+    };
+  },
+  mapToEditPanelValues: (config) => new Map([
+    ['system_title', config.system_title || defaultConfig.system_title],
+    ['subtitle_text', config.subtitle_text || defaultConfig.subtitle_text],
+    ['footer_text', config.footer_text || defaultConfig.footer_text]
+  ])
+});
+
+// ===== DATA SDK =====
+(async () => {
+  const result = await window.dataSdk.init({
+    onDataChanged(data) {
+      allRecords = data;
+      updateDashboard();
+      updatePatientsTable();
+      updateAppointmentsList();
+      updateBillingTable();
+    }
+  });
+  if (!result.isOk) console.error('Data SDK init failed');
+})();
+
+// ===== HELPERS =====
+function getPatients() { return allRecords.filter(r => r.type === 'patient'); }
+function getAppointments() { return allRecords.filter(r => r.type === 'appointment'); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  const primary = window.elementSdk.config?.primary_action || defaultConfig.primary_action;
+  t.style.background = primary;
+  t.textContent = msg;
+  t.classList.remove('hidden', 'toast-hide');
+  t.classList.add('toast-show');
+  setTimeout(() => { t.classList.add('toast-hide'); setTimeout(() => t.classList.add('hidden'), 300); }, 2500);
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ===== TABS =====
+function switchTab(tab) {
+  currentTab = tab;
+  ['dashboard','patients','appointments','billing'].forEach(t => {
+    const view = document.getElementById('view-' + t);
+    const btn = document.getElementById('tab-' + t);
+    const primary = window.elementSdk.config?.primary_action || defaultConfig.primary_action;
+    const secondary = window.elementSdk.config?.secondary_action || defaultConfig.secondary_action;
+    if (t === tab) {
+      view.classList.remove('hidden');
+      btn.classList.add('tab-active');
+      btn.style.color = primary;
+      btn.style.borderColor = primary;
+    } else {
+      view.classList.add('hidden');
+      btn.classList.remove('tab-active');
+      btn.style.color = secondary;
+      btn.style.borderColor = 'transparent';
+    }
+  });
+  lucide.createIcons();
+}
+
+// ===== DASHBOARD =====
+function updateDashboard() {
+  const patients = getPatients();
+  const appts = getAppointments();
+  const completed = appts.filter(a => a.appointment_status === 'Completed');
+  const paid = appts.filter(a => a.billing_status === 'Paid');
+  const revenue = paid.reduce((s, a) => s + (a.billing_amount || 0), 0);
+
+  document.getElementById('stat-patients').textContent = patients.length;
+  document.getElementById('stat-appointments').textContent = appts.length;
+  document.getElementById('stat-completed').textContent = completed.length;
+  document.getElementById('stat-revenue').textContent = '₱' + revenue.toLocaleString();
+
+  // Upcoming
+  const upcoming = appts.filter(a => a.appointment_status === 'Scheduled').sort((a,b) => new Date(a.appointment_date) - new Date(b.appointment_date)).slice(0, 5);
+  const ul = document.getElementById('upcoming-list');
+  if (!upcoming.length) {
+    ul.innerHTML = '<p class="text-sm text-center py-8" style="color:#94a3b8;">No upcoming appointments</p>';
+  } else {
+    ul.innerHTML = upcoming.map(a => `
+      <div class="flex items-center justify-between p-3 rounded-lg" style="background:#f8fafc;">
+        <div>
+          <p class="font-medium text-sm" style="color:#0f172a;">${a.patient_name || 'Unknown'}</p>
+          <p class="text-xs" style="color:#64748b;">${formatDate(a.appointment_date)} at ${a.appointment_time || '—'} · Dr. ${a.appointment_doctor || '—'}</p>
+        </div>
+        <span class="status-scheduled px-2.5 py-1 rounded-full text-xs font-medium">Scheduled</span>
+      </div>
+    `).join('');
+  }
+
+  // Recent patients
+  const recent = patients.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+  const rp = document.getElementById('recent-patients');
+  if (!recent.length) {
+    rp.innerHTML = '<p class="text-sm text-center py-8" style="color:#94a3b8;">No patients registered</p>';
+  } else {
+    rp.innerHTML = recent.map(p => `
+      <div class="flex items-center gap-3 p-3 rounded-lg" style="background:#f8fafc;">
+        <div class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style="background:#0f766e;">${(p.patient_name||'?')[0].toUpperCase()}</div>
+        <div>
+          <p class="font-medium text-sm" style="color:#0f172a;">${p.patient_name}</p>
+          <p class="text-xs" style="color:#64748b;">${p.patient_gender || '—'} · ${p.patient_age || '—'} yrs · ${p.patient_contact || '—'}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+// ===== PATIENTS TABLE =====
+function updatePatientsTable() {
+  const patients = getPatients();
+  const search = (document.getElementById('patient-search')?.value || '').toLowerCase();
+  const filtered = search ? patients.filter(p => (p.patient_name||'').toLowerCase().includes(search)) : patients;
+  const tbody = document.getElementById('patients-tbody');
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-12" style="color:#94a3b8;">${search ? 'No matching patients' : 'No patients yet. Click "Add Patient" to get started.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(p => `
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td class="px-5 py-3 font-medium" style="color:#0f172a;">${p.patient_name}</td>
+      <td class="px-5 py-3" style="color:#64748b;">${p.patient_age || '—'}</td>
+      <td class="px-5 py-3" style="color:#64748b;">${p.patient_gender || '—'}</td>
+      <td class="px-5 py-3" style="color:#64748b;">${p.patient_contact || '—'}</td>
+      <td class="px-5 py-3">
+        <div class="flex gap-1">
+          <button onclick="editPatient('${p.__backendId}')" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><i data-lucide="edit" style="width:14px;height:14px;color:#0f766e;"></i></button>
+          <button onclick="deleteRecord('${p.__backendId}','patient')" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><i data-lucide="trash-2" style="width:14px;height:14px;color:#dc2626;"></i></button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+  lucide.createIcons();
+}
+
+function filterPatients() { updatePatientsTable(); }
+
+// ===== APPOINTMENTS LIST =====
+function updateAppointmentsList() {
+  const appts = getAppointments();
+  const filtered = currentApptFilter === 'all' ? appts : appts.filter(a => a.appointment_status === currentApptFilter);
+  const container = document.getElementById('appointments-list');
+
+  if (!filtered.length) {
+    container.innerHTML = `<p class="text-sm text-center py-12" style="color:#94a3b8;">${currentApptFilter === 'all' ? 'No appointments yet. Click "New Appointment" to schedule one.' : 'No ' + currentApptFilter.toLowerCase() + ' appointments.'}</p>`;
+    return;
+  }
+
+  container.innerHTML = filtered.sort((a,b) => new Date(b.appointment_date) - new Date(a.appointment_date)).map(a => {
+    const statusClass = a.appointment_status === 'Completed' ? 'status-completed' : a.appointment_status === 'Cancelled' ? 'status-cancelled' : 'status-scheduled';
+    const billingClass = a.billing_status === 'Paid' ? 'status-paid' : 'status-unpaid';
+    return `
+    <div class="rounded-xl p-4 card-hover" style="background:#fff;border:1px solid #e2e8f0;">
+      <div class="flex items-start justify-between flex-wrap gap-2">
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-semibold" style="color:#0f172a;">${a.patient_name || 'Unknown'}</span>
+            <span class="${statusClass} px-2.5 py-0.5 rounded-full text-xs font-medium">${a.appointment_status}</span>
+            <span class="${billingClass} px-2.5 py-0.5 rounded-full text-xs font-medium">₱${(a.billing_amount||0).toLocaleString()} · ${a.billing_status||'Unpaid'}</span>
+          </div>
+          <p class="text-sm" style="color:#64748b;">
+            <i data-lucide="calendar" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i> ${formatDate(a.appointment_date)} at ${a.appointment_time||'—'}
+            &nbsp;·&nbsp; <i data-lucide="stethoscope" style="width:12px;height:12px;display:inline;vertical-align:middle;"></i> Dr. ${a.appointment_doctor||'—'}
+          </p>
+          ${a.appointment_reason ? `<p class="text-xs mt-1" style="color:#94a3b8;">Reason: ${a.appointment_reason}</p>` : ''}
+        </div>
+        <div class="flex gap-1">
+          <button onclick="editAppointment('${a.__backendId}')" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><i data-lucide="edit" style="width:14px;height:14px;color:#0f766e;"></i></button>
+          <button onclick="deleteRecord('${a.__backendId}','appointment')" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><i data-lucide="trash-2" style="width:14px;height:14px;color:#dc2626;"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+function filterAppointments(filter) {
+  currentApptFilter = filter;
+  const primary = window.elementSdk.config?.primary_action || defaultConfig.primary_action;
+  document.querySelectorAll('.appt-filter').forEach(btn => {
+    if (btn.dataset.filter === filter) {
+      btn.style.background = primary;
+      btn.style.color = '#fff';
+    } else {
+      btn.style.background = '#e2e8f0';
+      btn.style.color = '#64748b';
+    }
+  });
+  updateAppointmentsList();
+}
+
+// ===== BILLING TABLE =====
+function updateBillingTable() {
+  const appts = getAppointments();
+  const tbody = document.getElementById('billing-tbody');
+  if (!appts.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-12" style="color:#94a3b8;">No billing records. Billing is created with appointments.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = appts.map(a => {
+    const billingClass = a.billing_status === 'Paid' ? 'status-paid' : 'status-unpaid';
+    return `
+    <tr style="border-top:1px solid #f1f5f9;">
+      <td class="px-5 py-3 font-medium" style="color:#0f172a;">${a.patient_name||'Unknown'}</td>
+      <td class="px-5 py-3" style="color:#64748b;">${formatDate(a.appointment_date)}</td>
+      <td class="px-5 py-3 font-semibold" style="color:#0f172a;">₱${(a.billing_amount||0).toLocaleString()}</td>
+      <td class="px-5 py-3"><span class="${billingClass} px-2.5 py-1 rounded-full text-xs font-medium">${a.billing_status||'Unpaid'}</span></td>
+      <td class="px-5 py-3">
+        <button onclick="toggleBilling('${a.__backendId}')" class="text-xs font-medium px-3 py-1.5 rounded-lg" style="background:#f0fdfa;color:#0f766e;">
+          ${a.billing_status === 'Paid' ? 'Mark Unpaid' : 'Mark Paid'}
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+async function toggleBilling(id) {
+  const rec = allRecords.find(r => r.__backendId === id);
+  if (!rec) return;
+  const newStatus = rec.billing_status === 'Paid' ? 'Unpaid' : 'Paid';
+  const result = await window.dataSdk.update({ ...rec, billing_status: newStatus });
+  if (result.isOk) showToast('Billing status updated');
+}
+
+// ===== MODALS =====
+function openModal(type, record) {
+  currentModalType = type;
+  editingRecord = record || null;
+  const title = document.getElementById('modal-title');
+  const fields = document.getElementById('modal-fields');
+
+  if (type === 'patient') {
+    title.textContent = record ? 'Edit Patient' : 'Add Patient';
+    fields.innerHTML = `
+      <div class="space-y-4">
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-name">Full Name *</label>
+        <input id="f-name" required class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2" style="border-color:#e2e8f0;" value="${record?.patient_name||''}" placeholder="Juan Dela Cruz"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-age">Age</label>
+          <input id="f-age" type="number" min="0" max="150" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.patient_age||''}" placeholder="30"></div>
+          <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-gender">Gender</label>
+          <select id="f-gender" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;">
+            <option value="">Select</option>
+            <option value="Male" ${record?.patient_gender==='Male'?'selected':''}>Male</option>
+            <option value="Female" ${record?.patient_gender==='Female'?'selected':''}>Female</option>
+            <option value="Other" ${record?.patient_gender==='Other'?'selected':''}>Other</option>
+          </select></div>
+        </div>
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-contact">Contact Number</label>
+        <input id="f-contact" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.patient_contact||''}" placeholder="09XX XXX XXXX"></div>
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-address">Address</label>
+        <textarea id="f-address" rows="2" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none resize-none" style="border-color:#e2e8f0;" placeholder="City, Province">${record?.patient_address||''}</textarea></div>
+      </div>`;
+  } else {
+    title.textContent = record ? 'Edit Appointment' : 'New Appointment';
+    const patients = getPatients();
+    const patientOpts = patients.map(p => `<option value="${p.patient_name}" ${record?.patient_name===p.patient_name?'selected':''}>${p.patient_name}</option>`).join('');
+    fields.innerHTML = `
+      <div class="space-y-4">
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-apatient">Patient *</label>
+        <select id="f-apatient" required class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;">
+          <option value="">Select patient</option>${patientOpts}
+          <option value="__new">+ Enter name manually</option>
+        </select>
+        <input id="f-apatient-manual" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none mt-2 hidden" style="border-color:#e2e8f0;" placeholder="Patient name"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-adate">Date *</label>
+          <input id="f-adate" type="date" required class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.appointment_date||''}"></div>
+          <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-atime">Time *</label>
+          <input id="f-atime" type="time" required class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.appointment_time||''}"></div>
+        </div>
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-adoctor">Doctor *</label>
+        <input id="f-adoctor" required class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.appointment_doctor||''}" placeholder="Dr. Santos"></div>
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-areason">Reason</label>
+        <input id="f-areason" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.appointment_reason||''}" placeholder="General checkup"></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-astatus">Status</label>
+          <select id="f-astatus" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;">
+            <option value="Scheduled" ${record?.appointment_status==='Scheduled'?'selected':''}>Scheduled</option>
+            <option value="Completed" ${record?.appointment_status==='Completed'?'selected':''}>Completed</option>
+            <option value="Cancelled" ${record?.appointment_status==='Cancelled'?'selected':''}>Cancelled</option>
+          </select></div>
+          <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-aamount">Amount (₱)</label>
+          <input id="f-aamount" type="number" min="0" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;" value="${record?.billing_amount||''}" placeholder="500"></div>
+        </div>
+        <div><label class="block text-xs font-medium mb-1" style="color:#64748b;" for="f-abilling">Billing Status</label>
+        <select id="f-abilling" class="w-full px-3 py-2.5 rounded-lg border text-sm outline-none" style="border-color:#e2e8f0;">
+          <option value="Unpaid" ${record?.billing_status==='Unpaid'?'selected':''}>Unpaid</option>
+          <option value="Paid" ${record?.billing_status==='Paid'?'selected':''}>Paid</option>
+        </select></div>
+      </div>`;
+
+    // Manual patient name toggle
+    setTimeout(() => {
+      const sel = document.getElementById('f-apatient');
+      const manual = document.getElementById('f-apatient-manual');
+      if (sel && manual) {
+        sel.addEventListener('change', () => {
+          manual.classList.toggle('hidden', sel.value !== '__new');
+          if (sel.value === '__new') manual.focus();
+        });
+      }
+    }, 50);
+  }
+
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  editingRecord = null;
+  currentModalType = null;
+}
+
+async function handleFormSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('modal-submit');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    if (currentModalType === 'patient') {
+      const data = {
+        type: 'patient',
+        patient_name: document.getElementById('f-name').value.trim(),
+        patient_age: parseInt(document.getElementById('f-age').value) || 0,
+        patient_gender: document.getElementById('f-gender').value,
+        patient_contact: document.getElementById('f-contact').value.trim(),
+        patient_address: document.getElementById('f-address').value.trim(),
+        created_at: editingRecord?.created_at || new Date().toISOString()
+      };
+
+      if (editingRecord) {
+        const result = await window.dataSdk.update({ ...editingRecord, ...data });
+        if (result.isOk) showToast('Patient updated');
+        else showToast('Error updating patient');
+      } else {
+        if (allRecords.length >= 999) { showToast('Record limit reached (999). Delete some records first.'); return; }
+        const result = await window.dataSdk.create(data);
+        if (result.isOk) showToast('Patient added');
+        else showToast('Error adding patient');
+      }
+    } else {
+      const sel = document.getElementById('f-apatient');
+      const patientName = sel.value === '__new' ? document.getElementById('f-apatient-manual').value.trim() : sel.value;
+      const data = {
+        type: 'appointment',
+        patient_name: patientName,
+        appointment_date: document.getElementById('f-adate').value,
+        appointment_time: document.getElementById('f-atime').value,
+        appointment_doctor: document.getElementById('f-adoctor').value.trim(),
+        appointment_reason: document.getElementById('f-areason').value.trim(),
+        appointment_status: document.getElementById('f-astatus').value,
+        billing_amount: parseFloat(document.getElementById('f-aamount').value) || 0,
+        billing_status: document.getElementById('f-abilling').value,
+        created_at: editingRecord?.created_at || new Date().toISOString()
+      };
+
+      if (editingRecord) {
+        const result = await window.dataSdk.update({ ...editingRecord, ...data });
+        if (result.isOk) showToast('Appointment updated');
+        else showToast('Error updating appointment');
+      } else {
+        if (allRecords.length >= 999) { showToast('Record limit reached (999). Delete some records first.'); return; }
+        const result = await window.dataSdk.create(data);
+        if (result.isOk) showToast('Appointment scheduled');
+        else showToast('Error scheduling appointment');
+      }
+    }
+    closeModal();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+function editPatient(id) {
+  const rec = allRecords.find(r => r.__backendId === id);
+  if (rec) openModal('patient', rec);
+}
+
+function editAppointment(id) {
+  const rec = allRecords.find(r => r.__backendId === id);
+  if (rec) openModal('appointment', rec);
+}
+
+// ===== DELETE =====
+function deleteRecord(id, type) {
+  deletingRecord = allRecords.find(r => r.__backendId === id);
+  if (!deletingRecord) return;
+  document.getElementById('delete-msg').textContent = `Are you sure you want to delete this ${type} record?`;
+  document.getElementById('delete-overlay').classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function closeDelete() {
+  document.getElementById('delete-overlay').classList.add('hidden');
+  deletingRecord = null;
+}
+
+async function confirmDelete() {
+  if (!deletingRecord) return;
+  const btn = document.getElementById('delete-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting...';
+  const result = await window.dataSdk.delete(deletingRecord);
+  if (result.isOk) showToast('Record deleted');
+  else showToast('Error deleting record');
+  btn.disabled = false;
+  btn.textContent = 'Delete';
+  closeDelete();
+}
+
+// Init icons
+lucide.createIcons();
+</script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9ee7b72da2579c94',t:'MTc3NjU1NzczNC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
